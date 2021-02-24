@@ -1,5 +1,13 @@
-cd images
-mv aerial/ ../future_images/aerial/
-mv celebration/ ../future_images/celebration/
-mv corner/ ../future_images/corner/
-mv close/ ../future_images/close/
+gsutil -m mv -r "gs://tcc-2/images/train/freekick/" "gs://tcc-2/images/freekick"
+gsutil -m mv -r "gs://tcc-2/images/train/celebration/" "gs://tcc-2/images/celebration"
+gsutil -m mv -r "gs://tcc-2/images/train/close/" "gs://tcc-2/images/close"
+gsutil -m mv -r "gs://tcc-2/images/train/corner/" "gs://tcc-2/images/corner"
+gsutil -m mv -r "gs://tcc-2/images/train/none/" "gs://tcc-2/images/none"
+gsutil -m mv -r "gs://tcc-2/images/train/penalty/" "gs://tcc-2/images/penalty"
+gsutil -m cp -r "gs://tcc-2/images/valid/aerial/*" "gs://tcc-2/images/aerial/"
+gsutil -m cp -r "gs://tcc-2/images/valid/freekick/*" "gs://tcc-2/images/freekick/"
+gsutil -m cp -r "gs://tcc-2/images/valid/celebration/*" "gs://tcc-2/images/celebration/"
+gsutil -m cp -r "gs://tcc-2/images/valid/close/*" "gs://tcc-2/images/close/"
+gsutil -m cp -r "gs://tcc-2/images/valid/corner/*" "gs://tcc-2/images/corner/"
+gsutil -m cp -r "gs://tcc-2/images/valid/none/*" "gs://tcc-2/images/none/"
+gsutil -m cp -r "gs://tcc-2/images/valid/penalty/*" "gs://tcc-2/images/penalty/"
