@@ -1,2 +1,5 @@
 *.pyc
 *.png
+*.txt
+trained_models/
+saved_models/

@@ -1,5 +1,7 @@
 from datetime import datetime
 from sklearn.metrics import classification_report, confusion_matrix, plot_confusion_matrix
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.optimizers import SGD
 import argparse
 import kerastuner as kt
 import logging
@@ -21,54 +23,70 @@ parser.add_argument('--data_augmentation', help='Choose whether there will be a 
 parser.add_argument('--plot_model', help='If set to True, plots the model architecture and saves it on script\'s directory', action='store_false')
 parser.add_argument('--epochs', type=int, help='Set number of epochs for training')
 parser.add_argument('--optimizer', type=str, help='Set optimizer for model compilation')
-parser.add_argument('--learning_rate', type=int, help='Set a learning rate for the optimizer')
+parser.add_argument('--learning_rate', type=float, help='Set a learning rate for the optimizer')
 parser.add_argument('--saved_model_path', type=str, help='Set a path to save the trained model')
+parser.add_argument('--network', type=str, help='Network to be used for training', choices=['inception', 'inception_resnetv2' 'regular', 'resnet50'])
 args = parser.parse_args()
 
-def build_model(shape, num_of_classes, activation_function, network_size=128, convolution_blocks=3):
-    inputs = tf.keras.Input(shape=shape)
-    x = inputs
-    x = tf.keras.layers.experimental.preprocessing.Rescaling(1./255)(x)
+def plot_metrics(model):
+    pass
 
-    x = tf.keras.layers.Conv2D(32, 3, strides=2, padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Activation(activation_function)(x)
+def build_model(shape, num_of_classes, alpha=0.5):
+    model = tf.keras.models.Sequential([tf.keras.layers.Conv2D(32, kernel_size=(3, 3),activation='linear', padding='same', input_shape=shape),
+                                        tf.keras.layers.LeakyReLU(alpha=alpha),
+                                        tf.keras.layers.MaxPooling2D((2, 2),padding='same'),
+                                        tf.keras.layers.Conv2D(64, (3, 3), activation='linear',padding='same'),
+                                        tf.keras.layers.LeakyReLU(alpha=alpha),
+                                        tf.keras.layers.MaxPooling2D(pool_size=(2, 2),padding='same'),
+                                        tf.keras.layers.Flatten(),
+                                        tf.keras.layers.Dense(128, activation='linear'),
+                                        tf.keras.layers.LeakyReLU(alpha=alpha),
+                                        tf.keras.layers.Dense(num_of_classes, activation='softmax')])
+    return model
 
-    x = tf.keras.layers.Conv2D(64, 3, padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Activation(activation_function)(x)
-
-    previous_block_activation = x
-    conv_sizes = [network_size * i for i in range(1, convolution_blocks)]
-
-    for convs in conv_sizes:
-        x = tf.keras.layers.Activation(activation_function)(x)
-        x = tf.keras.layers.SeparableConv2D(convs, 3, padding='same')(x)
-        x = tf.keras.layers.BatchNormalization()(x)
-
-        x = tf.keras.layers.Activation(activation_function)(x)
-        x = tf.keras.layers.SeparableConv2D(convs, 3, padding='same')(x)
-        x = tf.keras.layers.BatchNormalization()(x)
-
-        x = tf.keras.layers.MaxPooling2D(3, strides=2, padding='same')(x)
-
-        residual = tf.keras.layers.Conv2D(convs, 1, strides=2, padding='same')(previous_block_activation)
-        x = tf.keras.layers.add([x, residual])
-        previous_block_activation = x
-
-    x = tf.keras.layers.SeparableConv2D(network_size * len(conv_sizes), 3, padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Activation(activation_function)(x)
-
+def inception_model(num_of_classes, train, epochs, valid):
+    base_model = InceptionV3(weights='imagenet', include_top=False)
+    # add a global spatial average pooling layer
+    x = base_model.output
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    # let's add a fully-connected layer
+    x = tf.keras.layers.Dense(1024, activation='relu')(x)
+    # and a logistic layer -- let's say we have 200 classes
+    predictions = tf.keras.layers.Dense(num_of_classes, activation='softmax')(x)
 
-    class_activation = 'sigmoid' if num_of_classes == 2 else 'softmax'
-    units = num_of_classes
+    # this is the model we will train
+    model = tf.keras.Model(inputs=base_model.input, outputs=predictions)
 
-    x = tf.keras.layers.Dropout(0.5)(x)
-    outputs = tf.keras.layers.Dense(units, activation=class_activation)(x)
+    # first: train only the top layers (which were randomly initialized)
+    # i.e. freeze all convolutional InceptionV3 layers
+    for layer in base_model.layers:
+        layer.trainable = False
 
-    return tf.keras.Model(inputs, outputs)
+    # compile the model (should be done *after* setting layers to non-trainable)
+    model.compile(optimizer='rmsprop', loss='categorical_crossentropy')
+
+    # train the model on the new data for a few epochs
+    model.fit(train, epochs=5, validation_data=valid)
+
+    # at this point, the top layers are well trained and we can start fine-tuning
+    # convolutional layers from inception V3. We will freeze the bottom N layers
+    # and train the remaining top layers.
+
+    # let's visualize layer names and layer indices to see how many layers
+    # we should freeze:
+    for i, layer in enumerate(base_model.layers):
+        print(i, layer.name)
+    
+    # we chose to train the top 2 inception blocks, i.e. we will freeze
+    # the first 249 layers and unfreeze the rest:
+    for layer in model.layers[:249]:
+        layer.trainable = False
+    for layer in model.layers[249:]:
+        layer.trainable = True
+
+    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
+    model.fit(train, epochs=epochs, validation_data=valid)
+    return model
 
 
 if args.image_width or args.image_height:
@@ -90,9 +108,14 @@ else:
 
 if args.color_mode:
     color_mode = args.color_mode
+    if color_mode == 'grayscale':
+        color_channels = 1
+    else:
+        color_channels = 3
 else:
     logging.debug('Color mode was not specified. Setting the default value: rgb')
     color_mode='rgb'
+    color_channels = 3
 
 if args.data_augmentation is True:
     data_augmentation_flag = True
@@ -107,6 +130,7 @@ else:
     epochs = 20
 
 if args.learning_rate:
+    logging.debug('Learning rate: {args.learning_rate}')
     learning_rate = args.learning_rate
 else:
     logging.debug('Learning rate was not set. Setting the default value: 0.001 (1e-3)')
@@ -126,6 +150,12 @@ if args.saved_model_path:
 else:
     logging.debug('Path for trained model not set. Setting the default path: trained_models')
     saved_model_path = 'trained_models'
+
+if args.network:
+    network = args.network
+else:
+    logging.debug('Network not set. Setting the default network: Regular Convolutional')
+    network = 'regular'
 
 events = ['penalty', 'freekick', 'none']
 folders = [directory for directory in os.listdir('images/') if directory in events]
@@ -155,9 +185,6 @@ validation_dataset = tf.keras.preprocessing.image_dataset_from_directory(
     batch_size=batch_size
 ).prefetch(buffer_size=32)
 
-logging.debug('Size of train dataset: {} images'.format(len(train_dataset)))
-logging.debug('Size of validation dataset: {} images'.format(len(validation_dataset)))
-
 if data_augmentation_flag:
     data_augmentation = tf.keras.Sequential(
         [
@@ -165,16 +192,19 @@ if data_augmentation_flag:
         ]
     )
 
-model = build_model(shape=image_size + (3,), num_of_classes=num_of_classes, activation_function='relu')
+if network == 'regular':
+    model = build_model(shape=image_size + (color_channels,), num_of_classes=num_of_classes)
+    
+    model.compile(
+        optimizer=optimizer,
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
 
-if args.plot_model:
-    tf.keras.utils.plot_model(model, show_shapes=True)
-
-model.compile(
-    optimizer=optimizer,
-    loss='categorical_crossentropy',
-    metrics=['accuracy']
-)
-
-model.fit(train_dataset, epochs=epochs, validation_data=validation_dataset)
-model.save(saved_model_path + '/' + model_filename)
+    model.fit(train_dataset, epochs=epochs, validation_data=validation_dataset)
+    model.save(saved_model_path + '/regular_' + model_filename)
+elif network == 'inception':
+    model = inception_model(num_of_classes, train_dataset, epochs, validation_dataset)
+    model.save(saved_model_path + '/inception_' + model_filename)
+elif network == 'resnet50':
+    pass

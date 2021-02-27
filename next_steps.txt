@@ -1,0 +1,5 @@
+1 - Rede ResNet
+2 - Opção de usar o kerastuner pra rede implementada
+3 - Script que levanta métricas baseada na escolha de parâmetros
+4 - plotar gráficos de loss
+5 - plotar gráficos de comparação entre redes
