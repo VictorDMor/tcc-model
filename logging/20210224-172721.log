@@ -1,9 +1,0 @@
-2021-02-24 17:27:21,736 Image width and size were not defined. Setting the default value: (200, 200)
-2021-02-24 17:27:21,736 Custom batch size was not set. Setting the default value: 32
-2021-02-24 17:27:21,736 Color mode was not specified. Setting the default value: rgb
-2021-02-24 17:27:21,736 Number of epochs was not set. Setting the default value: 20
-2021-02-24 17:27:21,736 Learning rate was not set. Setting the default value: 0.001 (1e-3)
-2021-02-24 17:27:21,736 Optimizer was not specified. Setting the default optimizer: Adam
-2021-02-24 17:27:21,737 Path for trained model not set. Setting the default path: trained_models
-2021-02-24 17:27:21,737 Image folders: ['freekick', 'none', 'penalty']
-2021-02-24 17:27:21,737 Number of classes: 3

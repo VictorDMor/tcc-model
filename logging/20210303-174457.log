@@ -1,0 +1,8 @@
+2021-03-03 17:44:57,647 Image width and size were not defined. Setting the default value: (200, 200)
+2021-03-03 17:44:57,647 Custom batch size was not set. Setting the default value: 32
+2021-03-03 17:44:57,647 Learning rate was not set. Setting the default value: 0.001 (1e-3)
+2021-03-03 17:44:57,647 Optimizer was not specified. Setting the default optimizer: Adam
+2021-03-03 17:44:57,647 Path for trained model not set. Setting the default path: trained_models
+2021-03-03 17:44:57,648 Image folders: ['freekick', 'none', 'penalty']
+2021-03-03 17:44:57,648 Number of classes: 3
+2021-03-03 18:14:32,727 Assets written to: trained_models/inception_20210303-1744\assets

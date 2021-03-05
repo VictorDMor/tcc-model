@@ -1,6 +1,8 @@
 from datetime import datetime
 from sklearn.metrics import classification_report, confusion_matrix, plot_confusion_matrix
 from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.optimizers import SGD
 import argparse
 import kerastuner as kt
@@ -25,7 +27,7 @@ parser.add_argument('--epochs', type=int, help='Set number of epochs for trainin
 parser.add_argument('--optimizer', type=str, help='Set optimizer for model compilation')
 parser.add_argument('--learning_rate', type=float, help='Set a learning rate for the optimizer')
 parser.add_argument('--saved_model_path', type=str, help='Set a path to save the trained model')
-parser.add_argument('--network', type=str, help='Network to be used for training', choices=['inception', 'inception_resnetv2' 'regular', 'resnet50'])
+parser.add_argument('--network', type=str, help='Network to be used for training', choices=['inception', 'inception_resnet', 'regular', 'resnet50'])
 args = parser.parse_args()
 
 def plot_metrics(model):
@@ -42,6 +44,24 @@ def build_model(shape, num_of_classes, alpha=0.5):
                                         tf.keras.layers.Dense(128, activation='linear'),
                                         tf.keras.layers.LeakyReLU(alpha=alpha),
                                         tf.keras.layers.Dense(num_of_classes, activation='softmax')])
+    return model
+
+def inception_resnet_model(num_of_classes, train, epochs, valid, network, include_top=False, pooling='avg'):
+    model = tf.keras.models.Sequential()
+    if network == 'resnet50':
+        model.add(ResNet50(
+            include_top=include_top,
+            pooling=pooling
+        ))
+    else:
+        model.add(InceptionResNetV2(
+            include_top=include_top,
+            pooling=pooling
+        ))
+    model.add(tf.keras.layers.Dense(num_of_classes, activation='softmax'))
+    model.layers[0].trainable = False
+    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
+    model.fit(train, epochs=epochs, validation_data=valid)
     return model
 
 def inception_model(num_of_classes, train, epochs, valid):
@@ -202,9 +222,9 @@ if network == 'regular':
     )
 
     model.fit(train_dataset, epochs=epochs, validation_data=validation_dataset)
-    model.save(saved_model_path + '/regular_' + model_filename)
 elif network == 'inception':
     model = inception_model(num_of_classes, train_dataset, epochs, validation_dataset)
-    model.save(saved_model_path + '/inception_' + model_filename)
-elif network == 'resnet50':
-    pass
+elif network == 'resnet50' or network == 'inception_resnet':
+    model = inception_resnet_model(num_of_classes, train_dataset, epochs, validation_dataset, network)
+
+model.save(saved_model_path + '/{}_'.format(network) + model_filename)
