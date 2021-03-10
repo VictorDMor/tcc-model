@@ -3,3 +3,6 @@
 *.txt
 trained_models/
 saved_models/
+future_images/
+*.log
+*.tex

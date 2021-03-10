@@ -47,21 +47,15 @@ def build_model(shape, num_of_classes, alpha=0.5):
     return model
 
 def inception_resnet_model(num_of_classes, train, epochs, valid, network, include_top=False, pooling='avg'):
-    model = tf.keras.models.Sequential()
     if network == 'resnet50':
-        model.add(ResNet50(
-            include_top=include_top,
-            pooling=pooling
-        ))
+        base_model = ResNet50(include_top=include_top, weights='imagenet')
+        for layer in base_model.layers[:143]:
+            layer.trainable = False
     else:
         model.add(InceptionResNetV2(
             include_top=include_top,
             pooling=pooling
         ))
-    model.add(tf.keras.layers.Dense(num_of_classes, activation='softmax'))
-    model.layers[0].trainable = False
-    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
-    model.fit(train, epochs=epochs, validation_data=valid)
     return model
 
 def inception_model(num_of_classes, train, epochs, valid):
@@ -73,7 +67,7 @@ def inception_model(num_of_classes, train, epochs, valid):
     x = tf.keras.layers.Dense(1024, activation='relu')(x)
     # and a logistic layer -- let's say we have 200 classes
     predictions = tf.keras.layers.Dense(num_of_classes, activation='softmax')(x)
-
+    logging.debug('Input: {}'.format(base_model.input))
     # this is the model we will train
     model = tf.keras.Model(inputs=base_model.input, outputs=predictions)
 
