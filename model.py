@@ -1,8 +1,12 @@
 from datetime import datetime
 from sklearn.metrics import classification_report, confusion_matrix, plot_confusion_matrix
 from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_v3 import preprocess_input as inception_preprocess_input
 from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input as incres_preprocess_input
 from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess_input
+from tensorflow.keras.metrics import categorical_accuracy
 from tensorflow.keras.optimizers import SGD
 import argparse
 import kerastuner as kt
@@ -30,8 +34,16 @@ parser.add_argument('--saved_model_path', type=str, help='Set a path to save the
 parser.add_argument('--network', type=str, help='Network to be used for training', choices=['inception', 'inception_resnet', 'regular', 'resnet50'])
 args = parser.parse_args()
 
-def plot_metrics(model):
-    pass
+def plot_metrics(metrics, epochs, option='categorical_accuracy'):
+    epoch_range = range(1, epochs+1)
+    plt.plot(epoch_range, metrics[0]['history'].history[option], 'red', label='{} {}'.format(metrics[0]['network'], option))
+    plt.plot(epoch_range, metrics[1]['history'].history[option], 'green', label='{} {}'.format(metrics[1]['network'], option))
+    plt.plot(epoch_range, metrics[2]['history'].history[option], 'blue', label='{} {}'.format(metrics[2]['network'], option))
+    plt.plot(epoch_range, metrics[3]['history'].history[option], 'yellow', label='{} {}'.format(metrics[3]['network'], option))
+    plt.xlabel('epochs')
+    plt.ylabel(option)
+    plt.legend()
+    plt.savefig('comparison_{}_metrics.png'.format(option))
 
 def build_model(shape, num_of_classes, alpha=0.5):
     model = tf.keras.models.Sequential([tf.keras.layers.Conv2D(32, kernel_size=(3, 3),activation='linear', padding='same', input_shape=shape),
@@ -46,62 +58,38 @@ def build_model(shape, num_of_classes, alpha=0.5):
                                         tf.keras.layers.Dense(num_of_classes, activation='softmax')])
     return model
 
-def inception_resnet_model(num_of_classes, train, epochs, valid, network, include_top=False, pooling='avg'):
+def transfer_learning(shape, num_of_classes, train, epochs, valid, network):
     if network == 'resnet50':
-        base_model = ResNet50(include_top=include_top, weights='imagenet')
-        for layer in base_model.layers[:143]:
-            layer.trainable = False
+        base_model = ResNet50(include_top=False, weights='imagenet')
+        trainable_limit = 143
+    elif network == 'inception_resnet':
+        base_model = InceptionResNetV2(weights='imagenet', include_top=False)
+        trainable_limit = 249
     else:
-        model.add(InceptionResNetV2(
-            include_top=include_top,
-            pooling=pooling
-        ))
-    return model
-
-def inception_model(num_of_classes, train, epochs, valid):
-    base_model = InceptionV3(weights='imagenet', include_top=False)
-    # add a global spatial average pooling layer
+        base_model = InceptionV3(weights='imagenet', include_top=False)
+        trainable_limit = 249
+    
     x = base_model.output
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    # let's add a fully-connected layer
     x = tf.keras.layers.Dense(1024, activation='relu')(x)
-    # and a logistic layer -- let's say we have 200 classes
     predictions = tf.keras.layers.Dense(num_of_classes, activation='softmax')(x)
-    logging.debug('Input: {}'.format(base_model.input))
-    # this is the model we will train
-    model = tf.keras.Model(inputs=base_model.input, outputs=predictions)
-
-    # first: train only the top layers (which were randomly initialized)
-    # i.e. freeze all convolutional InceptionV3 layers
+    model = tf.keras.Model(inputs=base_model.input, outputs=predictions)        
+    
     for layer in base_model.layers:
         layer.trainable = False
-
-    # compile the model (should be done *after* setting layers to non-trainable)
+      
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy')
-
-    # train the model on the new data for a few epochs
     model.fit(train, epochs=5, validation_data=valid)
-
-    # at this point, the top layers are well trained and we can start fine-tuning
-    # convolutional layers from inception V3. We will freeze the bottom N layers
-    # and train the remaining top layers.
-
-    # let's visualize layer names and layer indices to see how many layers
-    # we should freeze:
-    for i, layer in enumerate(base_model.layers):
-        print(i, layer.name)
     
-    # we chose to train the top 2 inception blocks, i.e. we will freeze
-    # the first 249 layers and unfreeze the rest:
-    for layer in model.layers[:249]:
-        layer.trainable = False
-    for layer in model.layers[249:]:
-        layer.trainable = True
-
-    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
-    model.fit(train, epochs=epochs, validation_data=valid)
-    return model
-
+    if network != 'inception_resnet':
+        for layer in model.layers[:trainable_limit]:
+            layer.trainable = False
+        for layer in model.layers[trainable_limit:]:
+            layer.trainable = True
+    
+    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=categorical_accuracy)
+    history = model.fit(train, epochs=epochs, validation_data=valid)
+    return model, history
 
 if args.image_width or args.image_height:
     if not args.image_height:
@@ -206,19 +194,27 @@ if data_augmentation_flag:
         ]
     )
 
-if network == 'regular':
-    model = build_model(shape=image_size + (color_channels,), num_of_classes=num_of_classes)
+metrics = []
+for network in ['regular', 'resnet50', 'inception', 'inception_resnet']:
+    if network == 'regular':
+        model = build_model(shape=image_size + (color_channels,), num_of_classes=num_of_classes)
+
+        model.compile(
+            optimizer=optimizer,
+            loss='categorical_crossentropy',
+            metrics=categorical_accuracy
+        )
+
+        history = model.fit(train_dataset, epochs=epochs, validation_data=validation_dataset)
+    else:
+        model, history = transfer_learning(image_size + (color_channels,), num_of_classes, train_dataset, epochs, validation_dataset, network)
+    metrics.append({
+        'network': network,
+        'model': model,
+        'history': history
+    })
+
+for option in ['categorical_accuracy', 'loss', 'val_loss']:
+    plot_metrics(metrics, epochs, option)
     
-    model.compile(
-        optimizer=optimizer,
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
-    )
-
-    model.fit(train_dataset, epochs=epochs, validation_data=validation_dataset)
-elif network == 'inception':
-    model = inception_model(num_of_classes, train_dataset, epochs, validation_dataset)
-elif network == 'resnet50' or network == 'inception_resnet':
-    model = inception_resnet_model(num_of_classes, train_dataset, epochs, validation_dataset, network)
-
 model.save(saved_model_path + '/{}_'.format(network) + model_filename)
