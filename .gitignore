@@ -4,5 +4,7 @@
 trained_models/
 saved_models/
 future_images/
+logging/
+metrics/
 *.log
 *.tex

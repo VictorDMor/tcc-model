@@ -43,7 +43,8 @@ def plot_metrics(metrics, epochs, option='categorical_accuracy'):
     plt.xlabel('epochs')
     plt.ylabel(option)
     plt.legend()
-    plt.savefig('comparison_{}_metrics.png'.format(option))
+    plt.savefig('metrics/comparison_{}_{}_metrics_{}.png'.format(option, epochs, datetime.now().strftime('%Y%m%d-%H%M%S')))
+    plt.clf()
 
 def build_model(shape, num_of_classes, alpha=0.5):
     model = tf.keras.models.Sequential([tf.keras.layers.Conv2D(32, kernel_size=(3, 3),activation='linear', padding='same', input_shape=shape),
@@ -58,13 +59,12 @@ def build_model(shape, num_of_classes, alpha=0.5):
                                         tf.keras.layers.Dense(num_of_classes, activation='softmax')])
     return model
 
-def transfer_learning(shape, num_of_classes, train, epochs, valid, network):
+def transfer_learning(shape, num_of_classes, train, epochs, valid, network, learning_rate=1e-4):
     if network == 'resnet50':
         base_model = ResNet50(include_top=False, weights='imagenet')
         trainable_limit = 143
     elif network == 'inception_resnet':
         base_model = InceptionResNetV2(weights='imagenet', include_top=False)
-        trainable_limit = 249
     else:
         base_model = InceptionV3(weights='imagenet', include_top=False)
         trainable_limit = 249
@@ -85,6 +85,9 @@ def transfer_learning(shape, num_of_classes, train, epochs, valid, network):
         for layer in model.layers[:trainable_limit]:
             layer.trainable = False
         for layer in model.layers[trainable_limit:]:
+            layer.trainable = True
+    else:
+        for layer in model.layers:
             layer.trainable = True
     
     model.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=categorical_accuracy)
@@ -159,7 +162,7 @@ else:
     logging.debug('Network not set. Setting the default network: Regular Convolutional')
     network = 'regular'
 
-events = ['penalty', 'freekick', 'none']
+events = ['penalty', 'corner', 'freekick', 'none']
 folders = [directory for directory in os.listdir('images/') if directory in events]
 num_of_classes = len(events)
 logging.debug('Image folders: {}'.format(folders))
@@ -214,7 +217,7 @@ for network in ['regular', 'resnet50', 'inception', 'inception_resnet']:
         'history': history
     })
 
-for option in ['categorical_accuracy', 'loss', 'val_loss']:
+for option in ['categorical_accuracy', 'val_categorical_accuracy', 'loss', 'val_loss']:
     plot_metrics(metrics, epochs, option)
-    
+
 model.save(saved_model_path + '/{}_'.format(network) + model_filename)
