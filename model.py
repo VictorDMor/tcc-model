@@ -36,18 +36,18 @@ args = parser.parse_args()
 
 def plot_metrics(metrics, epochs, option='categorical_accuracy'):
     epoch_range = range(1, epochs+1)
-    plt.plot(epoch_range, metrics[0]['history'].history[option], 'red', label='{} {}'.format(metrics[0]['network'], option))
-    plt.plot(epoch_range, metrics[1]['history'].history[option], 'green', label='{} {}'.format(metrics[1]['network'], option))
-    plt.plot(epoch_range, metrics[2]['history'].history[option], 'blue', label='{} {}'.format(metrics[2]['network'], option))
-    plt.plot(epoch_range, metrics[3]['history'].history[option], 'yellow', label='{} {}'.format(metrics[3]['network'], option))
+    plt.plot(epoch_range, [x * 100 for x in metrics[0]['history'].history[option]], 'red', label='{}'.format(metrics[0]['network']))
+    plt.plot(epoch_range, [x * 100 for x in metrics[1]['history'].history[option]], 'green', label='{}'.format(metrics[1]['network']))
+    plt.plot(epoch_range, [x * 100 for x in metrics[2]['history'].history[option]], 'blue', label='{}'.format(metrics[2]['network']))
+    plt.plot(epoch_range, [x * 100 for x in metrics[3]['history'].history[option]], 'yellow', label='{}'.format(metrics[3]['network']))
     plt.xlabel('epochs')
     plt.ylabel(option)
-    plt.legend()
-    plt.savefig('metrics/comparison_{}_{}_metrics_{}.png'.format(option, epochs, datetime.now().strftime('%Y%m%d-%H%M%S')))
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.savefig('metrics/comparison_{}_{}_metrics_{}.png'.format(option, epochs, datetime.now().strftime('%Y%m%d-%H%M%S')), bbox_extra_artists=(lgd,), bbox_inches='tight')
     plt.clf()
 
 def build_model(shape, num_of_classes, alpha=0.5):
-    model = tf.keras.models.Sequential([tf.keras.layers.Conv2D(32, kernel_size=(3, 3),activation='linear', padding='same', input_shape=shape),
+    model = tf.keras.models.Sequential([tf.keras.layers.Conv2D(32, kernel_size=(9, 9),activation='linear', padding='same', input_shape=shape),
                                         tf.keras.layers.LeakyReLU(alpha=alpha),
                                         tf.keras.layers.MaxPooling2D((2, 2),padding='same'),
                                         tf.keras.layers.Conv2D(64, (3, 3), activation='linear',padding='same'),
